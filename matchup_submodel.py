@@ -191,7 +191,7 @@ class PlayerMatchUp:
         train_data_df = polars.DataFrame(train_data_arg)
 
         x = train_data_df.drop(["game_date", "target"]).to_numpy()
-        y = train_data_df.select("target").to_numpy()
+        y = train_data_df.select("target").to_numpy().ravel()
 
         # ----- Configure grid/random search. -----
         # param_search = {
@@ -226,7 +226,7 @@ class PlayerMatchUp:
             reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
             scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
             booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
-            _sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
+            # sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
 
             optuna_objective_model = xgboost.XGBClassifier(
                 objective="binary:logistic",
@@ -255,7 +255,7 @@ class PlayerMatchUp:
             cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
             calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=optuna_objective_model, method="sigmoid", cv=cv)
 
-            scores = cross_val_score(estimator=calibrated_model, X=x, y=y.ravel(), cv=loocv, scoring="accuracy", n_jobs=-1)
+            scores = cross_val_score(estimator=calibrated_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
 
             return scores.mean()
 
@@ -275,19 +275,19 @@ class PlayerMatchUp:
         # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=500, desc="Optuna Trials")
+        progress_bar = tqdm(total=250, desc="Optuna Trials")
 
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
         n_jobs = multiprocessing.cpu_count()
-        optuna_sampler = optuna.samplers.RandomSampler()
+        optuna_sampler = optuna.samplers.TPESampler()
         _pruner = optuna.pruners.HyperbandPruner()
 
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
-        study = optuna.create_study(sampler=optuna_sampler, pruner=_pruner, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=500, show_progress_bar=False, callbacks=[update_pbar])
+        study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=250, show_progress_bar=False, callbacks=[update_pbar])
 
         progress_bar.close()
 
