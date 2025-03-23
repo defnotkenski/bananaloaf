@@ -341,7 +341,7 @@ class PlayerMatchUp:
 
         return
 
-    def train_matchup_context_submodel(self, bet_line_under_or_over: Literal["under", "over"], points_or_equiv: int) -> list[dict]:
+    def train_matchup_context_submodel(self, bet_line_under_or_over: Literal["under", "over"], points_or_equiv: int) -> None:
         """
         This function is for training (not predicting) the match-up and context submodel only.
         ---
@@ -414,7 +414,7 @@ class PlayerMatchUp:
 
         self._train_xgboost(train_data_arg=feature_extraction)
 
-        return feature_extraction
+        return
 
 
 if __name__ == "__main__":
