@@ -226,15 +226,16 @@ class PlayerMatchUp:
             reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
             scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
             booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
-            sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
+            _sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
 
             optuna_objective_model = xgboost.XGBClassifier(
                 objective="binary:logistic",
                 eval_metric="logloss",
                 verbosity=0,
                 # ----- CUDA support. -----
-                device="cuda",
-                tree_method="hist",
+                # device="cuda",
+                # tree_method="hist",
+                # sampling_method=sampling_method,
                 # ----- Param sweep. -----
                 max_depth=max_depth,
                 learning_rate=learning_rate,
@@ -249,7 +250,6 @@ class PlayerMatchUp:
                 reg_lambda=reg_lambda,
                 scale_pos_weight=scale_pos_weight,
                 booster=booster,
-                sampling_method=sampling_method,
             )
 
             cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
