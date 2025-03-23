@@ -226,12 +226,16 @@ class PlayerMatchUp:
             reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
             scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
             booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
+            sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
 
             optuna_objective_model = xgboost.XGBClassifier(
                 objective="binary:logistic",
                 eval_metric="logloss",
                 verbosity=0,
-                # -----
+                # ----- CUDA support. -----
+                device="cuda",
+                tree_method="hist",
+                # ----- Param sweep. -----
                 max_depth=max_depth,
                 learning_rate=learning_rate,
                 n_estimators=n_estimators,
@@ -245,6 +249,7 @@ class PlayerMatchUp:
                 reg_lambda=reg_lambda,
                 scale_pos_weight=scale_pos_weight,
                 booster=booster,
+                sampling_method=sampling_method,
             )
 
             cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
@@ -270,16 +275,19 @@ class PlayerMatchUp:
         # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=50, desc="Optuna Trials")
+        progress_bar = tqdm(total=100, desc="Optuna Trials")
 
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
         optuna_sampler = optuna.samplers.RandomSampler()
         _pruner = optuna.pruners.HyperbandPruner()
+        n_jobs = multiprocessing.cpu_count()
+
+        print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
         study = optuna.create_study(sampler=optuna_sampler, pruner=_pruner, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=multiprocessing.cpu_count(), n_trials=50, show_progress_bar=False, callbacks=[update_pbar])
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=100, show_progress_bar=False, callbacks=[update_pbar])
 
         progress_bar.close()
 
