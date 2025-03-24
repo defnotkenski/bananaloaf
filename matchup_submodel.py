@@ -4,7 +4,7 @@ import sklearn.calibration
 from nba_api.stats.static import players
 from pathlib import Path
 import polars
-from sklearn.model_selection import LeaveOneOut, cross_val_score, StratifiedKFold
+from sklearn.model_selection import LeaveOneOut, cross_val_score, StratifiedKFold, train_test_split
 from sklearn.metrics import accuracy_score
 import xgboost
 from tqdm import tqdm
@@ -142,115 +142,103 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict]) -> None:
-        outer_loocv = LeaveOneOut()
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int) -> None:
+        def update_pbar(_study, _trial):
+            progress_bar.update(1)
+
+        # -----
+
+        loocv = LeaveOneOut()
+        progress_bar = tqdm(total=n_iter, desc="Optuna Trials")
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         # ----- Prepare polars dataframe. -----
         train_data_df = polars.DataFrame(train_data_arg)
 
         x = train_data_df.drop(["game_date", "target"]).to_numpy()
-        y = train_data_df.select("target").to_numpy().ravel()
+        y = train_data_df.get_column("target").to_numpy()
 
-        # We'll store these to track performance across the outer loop
-        outer_y_true = []
-        outer_y_pred = []
-        outer_y_pred_prob = []
+        # ----- Split dataset into train and test. -----
+
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.10, stratify=y)
 
         n_jobs = multiprocessing.cpu_count()
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
-        # Outer loop
-        for idx, (train_idx, test_idx) in enumerate(outer_loocv.split(x)):
-            print(f"🐝 Current iteration: {idx + 1}")
+        def optuna_objective(trial: optuna.Trial) -> float:
+            max_depth = trial.suggest_int("max_depth", 2, 5)
+            learning_rate = trial.suggest_categorical("learning_rate", [0.01, 0.02, 0.05, 0.1])
+            n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 500])
+            subsample = trial.suggest_categorical("subsample", [0.6, 0.8, 1.0])
+            colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.6, 0.8, 1.0])
+            colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.6, 1.0])
+            colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.6, 1.0])
+            min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
+            gamma = trial.suggest_categorical("gamma", [0, 0.1, 0.5, 1])
+            reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10])
+            reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10])
+            scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5])
+            booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
 
-            x_train, x_test = x[train_idx], x[test_idx]
-            y_train, y_test = y[train_idx], y[test_idx]
+            optuna_objective_model = xgboost.XGBClassifier(
+                objective="binary:logistic",
+                eval_metric="logloss",
+                verbosity=0,
+                # ----- CUDA support. -----
+                # device="cuda",
+                # tree_method="hist",
+                # sampling_method=sampling_method,
+                # ----- Param sweep. -----
+                max_depth=max_depth,
+                learning_rate=learning_rate,
+                n_estimators=n_estimators,
+                subsample=subsample,
+                colsample_bytree=colsample_bytree,
+                colsample_bylevel=colsample_bylevel,
+                colsample_bynode=colsample_bynode,
+                min_child_weight=min_child_weight,
+                gamma=gamma,
+                reg_alpha=reg_alpha,
+                reg_lambda=reg_lambda,
+                scale_pos_weight=scale_pos_weight,
+                booster=booster,
+            )
 
-            # Inner LOOCV for hyperparam search
-            inner_loocv = LeaveOneOut()
+            scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
 
-            def optuna_objective(trial: optuna.Trial) -> float:
+            return scores.mean()
 
-                max_depth = trial.suggest_int("max_depth", 2, 5)
-                learning_rate = trial.suggest_categorical("learning_rate", [0.01, 0.02, 0.05, 0.1])
-                n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 500])
-                subsample = trial.suggest_categorical("subsample", [0.6, 0.8, 1.0])
-                colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.6, 0.8, 1.0])
-                colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.6, 1.0])
-                colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.6, 1.0])
-                min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
-                gamma = trial.suggest_categorical("gamma", [0, 0.1, 0.5, 1])
-                reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10])
-                reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10])
-                scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5])
-                booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
+        optuna_sampler = optuna.samplers.TPESampler()
+        _pruner = optuna.pruners.HyperbandPruner()
 
-                optuna_objective_model = xgboost.XGBClassifier(
-                    objective="binary:logistic",
-                    eval_metric="logloss",
-                    verbosity=0,
-                    # ----- CUDA support. -----
-                    # device="cuda",
-                    # tree_method="hist",
-                    # sampling_method=sampling_method,
-                    # ----- Param sweep. -----
-                    max_depth=max_depth,
-                    learning_rate=learning_rate,
-                    n_estimators=n_estimators,
-                    subsample=subsample,
-                    colsample_bytree=colsample_bytree,
-                    colsample_bylevel=colsample_bylevel,
-                    colsample_bynode=colsample_bynode,
-                    min_child_weight=min_child_weight,
-                    gamma=gamma,
-                    reg_alpha=reg_alpha,
-                    reg_lambda=reg_lambda,
-                    scale_pos_weight=scale_pos_weight,
-                    booster=booster,
-                )
+        study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, show_progress_bar=False, callbacks=[update_pbar])
 
-                scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=inner_loocv, scoring="accuracy", n_jobs=-1)
+        progress_bar.close()
 
-                return scores.mean()
+        optuna_best_params = study.best_params
+        optuna_best_accuracy_found = study.best_value
 
-            optuna.logging.set_verbosity(optuna.logging.WARNING)
-            progress_bar = tqdm(total=250, desc="Optuna Trials")
+        print(f"🐝 Optuna best params accuracy (LOOCV estimate): {optuna_best_accuracy_found:.4f}")
+        # print(f"🐝 Optuna best params: {optuna_best_params}")
 
-            def update_pbar(_study, _trial):
-                progress_bar.update(1)
+        # ----- Retrain on the best hyperparams found from Optuna. -----
 
-            optuna_sampler = optuna.samplers.TPESampler()
-            _pruner = optuna.pruners.HyperbandPruner()
+        best_param_model = xgboost.XGBClassifier(**optuna_best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
+        best_param_model.fit(x_train, y_train)
 
-            study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=250, show_progress_bar=False, callbacks=[update_pbar])
+        # ----- Predict and evaluate. -----
+        y_pred = best_param_model.predict(x_test)
+        y_pred_prob = best_param_model.predict_proba(x_test)[:, 1]
 
-            progress_bar.close()
-
-            best_params = study.best_params
-            best_accuracy_found = study.best_value
-
-            print(f"🐝 Optuna best accuracy (LOOCV estimate): {best_accuracy_found:.4f}")
-            # print(f"🐝 Optuna best params: {best_params}")
-
-            model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
-            model.fit(x_train, y_train)
-
-            y_pred_test = model.predict(x_test)[0]
-            y_pred_prob_test = model.predict_proba(x_test)[0, 1]
-
-            outer_y_true.append(y_test[0])
-            outer_y_pred.append(y_pred_test)
-            outer_y_pred_prob.append(y_pred_prob_test)
-
-        # ----- Evaluate overall performance across the outer folds. -----
-        final_accuracy = accuracy_score(outer_y_true, outer_y_pred)
-        print(f"🐝 Nested LOOCV final accuracy: {final_accuracy:.4f}")
+        best_param_accuracy = accuracy_score(y_true=y_test, y_pred=y_pred)
+        print(f"🐝 Final accuracy on test data: {best_param_accuracy:.4f}")
 
         # ----- Calculate confifence from predictions. -----
         results_converted = []
 
-        for true_class, pred, prob in zip(outer_y_true, outer_y_pred, outer_y_pred_prob):
+        for true_class, pred, prob in zip(y_test, y_pred, y_pred_prob):
             confidence = abs(prob - 0.5) * 2
 
             results_converted.append(
@@ -347,7 +335,7 @@ class PlayerMatchUp:
                 }
             )
 
-        self._train_xgboost(train_data_arg=feature_extraction)
+        self._train_xgboost(train_data_arg=feature_extraction, n_iter=500)
 
         return
 
