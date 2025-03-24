@@ -1,13 +1,10 @@
 import sys
 from typing import Literal
-import numpy
 import sklearn.calibration
 from nba_api.stats.static import players
 from pathlib import Path
 import polars
-from sklearn.model_selection import LeaveOneOut, cross_val_score
-from skopt import BayesSearchCV
-from skopt.space import Categorical, Integer
+from sklearn.model_selection import LeaveOneOut, cross_val_score, StratifiedKFold
 from sklearn.metrics import accuracy_score
 import xgboost
 from tqdm import tqdm
@@ -272,7 +269,7 @@ class PlayerMatchUp:
         # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=1500, desc="Optuna Trials")
+        progress_bar = tqdm(total=1000, desc="Optuna Trials")
 
         def update_pbar(_study, _trial):
             progress_bar.update(1)
@@ -284,7 +281,7 @@ class PlayerMatchUp:
         _pruner = optuna.pruners.HyperbandPruner()
 
         study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=1500, show_progress_bar=False, callbacks=[update_pbar])
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=1000, show_progress_bar=False, callbacks=[update_pbar])
 
         progress_bar.close()
 
@@ -309,7 +306,8 @@ class PlayerMatchUp:
             model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss")
             model.fit(x_train, y_train)
 
-            calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=model, method="sigmoid", cv=loocv)
+            cv = StratifiedKFold(n_splits=5, shuffle=True)
+            calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=model, method="sigmoid", cv=cv)
             calibrated_model.fit(x_train, y_train)
 
             y_predict = calibrated_model.predict(x_test)[0]
