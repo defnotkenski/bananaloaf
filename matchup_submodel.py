@@ -142,7 +142,7 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 1000) -> None:
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
@@ -220,7 +220,7 @@ class PlayerMatchUp:
         optuna_best_params = study.best_params
         optuna_best_accuracy_found = study.best_value
 
-        print(f"🐝 Optuna best params accuracy (LOOCV estimate): {optuna_best_accuracy_found:.4f}")
+        print(f"🐝 Optuna best params INTERNAL accuracy: {optuna_best_accuracy_found:.4f}")
         # print(f"🐝 Optuna best params: {optuna_best_params}")
 
         # ----- Retrain on the best hyperparams found from Optuna. -----
@@ -233,9 +233,9 @@ class PlayerMatchUp:
         y_pred_prob = best_param_model.predict_proba(x_test)[:, 1]
 
         best_param_accuracy = accuracy_score(y_true=y_test, y_pred=y_pred)
-        print(f"🐝 Final accuracy on test data: {best_param_accuracy:.4f}")
+        print(f"🐝 Final accuracy on UNSEEN test data: {best_param_accuracy:.4f}")
 
-        # ----- Calculate confifence from predictions. -----
+        # ----- Calculate confidence from predictions. -----
         results_converted = []
 
         for true_class, pred, prob in zip(y_test, y_pred, y_pred_prob):
@@ -254,8 +254,13 @@ class PlayerMatchUp:
         results_converted_df = polars.DataFrame(results_converted)
 
         # ----- Evaluate high confidence predictions. -----
-        confidence_threshold = 0.60
+        confidence_threshold = 0.70
+
         high_confidence_df = results_converted_df.filter(polars.col("confidence") >= confidence_threshold)
+
+        if high_confidence_df.height == 0:
+            print(f"🐝 There were no samples that meet the confidence threshold of {confidence_threshold}")
+            return
 
         accuracy_high_confidence = high_confidence_df.get_column("correct").mean()
 
@@ -335,23 +340,29 @@ class PlayerMatchUp:
                 }
             )
 
-        self._train_xgboost(train_data_arg=feature_extraction, n_iter=500)
+        self._train_xgboost(train_data_arg=feature_extraction)
 
         return
 
 
 if __name__ == "__main__":
     # Parameters.
-    player_last: str = "jokic"
+    player_last: str = "hayes"
     season: str = "2024-25"
 
     curr_dir = Path.cwd()
 
-    player_gamelogs_csv = curr_dir.joinpath("player_gamelog_validation_v2.csv")
-    league_gamelogs_csv = curr_dir.joinpath("league_gamelog_validation_v2.csv")
+    player_gamelog_csv = curr_dir.joinpath("player_gamelog_validation_v2.csv")
+    league_gamelog_csv = curr_dir.joinpath("league_gamelog_validation_v2.csv")
+
+    player_gamelog_csv_ext = polars.read_csv("player_gamelog_validation_v2_extension.csv")
+    league_gamelog_csv_ext = polars.read_csv("league_gamelog_validation_v2_extension.csv")
+
+    player_gamelog_concat = polars.concat([player_gamelog_csv, player_gamelog_csv_ext])
+    league_gamelog_concat = polars.concat([league_gamelog_csv_ext, league_gamelog_csv])
 
     player_matchup_context = PlayerMatchUp(
-        player_last_arg=player_last, player_gamelogs_csv_arg=player_gamelogs_csv, league_gamelogs_csv_arg=league_gamelogs_csv
+        player_last_arg=player_last, player_gamelogs_csv_arg=player_gamelog_concat, league_gamelogs_csv_arg=league_gamelog_concat
     )
 
     player_matchup_context.train_matchup_context_submodel(bet_line_under_or_over="over", points_or_equiv=6)
