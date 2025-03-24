@@ -275,19 +275,19 @@ class PlayerMatchUp:
         # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=250, desc="Optuna Trials")
+        progress_bar = tqdm(total=500, desc="Optuna Trials")
 
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
         n_jobs = multiprocessing.cpu_count()
+        print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
+
         optuna_sampler = optuna.samplers.TPESampler()
         _pruner = optuna.pruners.HyperbandPruner()
 
-        print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
-
         study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=250, show_progress_bar=False, callbacks=[update_pbar])
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=500, show_progress_bar=False, callbacks=[update_pbar])
 
         progress_bar.close()
 
@@ -345,7 +345,9 @@ class PlayerMatchUp:
         high_confidence_df = results_converted_df.filter(polars.col("confidence") >= confidence_threshold)
 
         accuracy_high_confidence = high_confidence_df.get_column("correct").mean()
+
         print(f"🐝 Accuracy of high-confidence predictions: {accuracy_high_confidence}")
+        print(high_confidence_df)
 
         return
 
