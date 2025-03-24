@@ -42,45 +42,6 @@ class PlayerMatchUp:
         convert_dates = polars_df.with_columns(polars.col("GAME_DATE").str.to_datetime("%Y-%m-%d"))
         return convert_dates
 
-    # def _optuna_objective(self, trial: optuna.Trial, x: numpy.ndarray, y: numpy.ndarray, loocv: LeaveOneOut) -> float:
-    #     max_depth = trial.suggest_int("max_depth", 3, 15)
-    #     learning_rate = trial.suggest_float("learning_rate", 0.001, 0.3, log=True)
-    #     n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000])
-    #     subsample = trial.suggest_categorical("subsample", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-    #     colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-    #     colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-    #     colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.5, 0.7, 0.9, 1.0])
-    #     min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
-    #     gamma = trial.suggest_categorical("gamma", [0, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5])
-    #     reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.0001, 0.001, 0.01, 0.1, 1, 10])
-    #     reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
-    #     scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
-    #     booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
-    #
-    #     model = xgboost.XGBClassifier(
-    #         objective="binary:logistic",
-    #         eval_metric="logloss",
-    #         verbosity=0,
-    #         # -----
-    #         max_depth=max_depth,
-    #         learning_rate=learning_rate,
-    #         n_estimators=n_estimators,
-    #         subsample=subsample,
-    #         colsample_bytree=colsample_bytree,
-    #         colsample_bylevel=colsample_bylevel,
-    #         colsample_bynode=colsample_bynode,
-    #         min_child_weight=min_child_weight,
-    #         gamma=gamma,
-    #         reg_alpha=reg_alpha,
-    #         reg_lambda=reg_lambda,
-    #         scale_pos_weight=scale_pos_weight,
-    #         booster=booster,
-    #     )
-    #
-    #     scores = cross_val_score(estimator=model, X=x, y=y.ravel(), cv=loocv, scoring="accuracy", n_jobs=-1)
-    #
-    #     return -scores.mean()
-
     def _get_opp_other_opp_boxscore(self, opp_team_id_arg: int, opp_game_id_arg: int) -> polars.DataFrame:
         opp_other_opp_boxscore = self.league_gamelogs_df.filter(
             (polars.col("GAME_ID") == opp_game_id_arg) & (polars.col("TEAM_ID") != opp_team_id_arg)
@@ -207,20 +168,20 @@ class PlayerMatchUp:
             inner_loocv = LeaveOneOut()
 
             def optuna_objective(trial: optuna.Trial) -> float:
-                max_depth = trial.suggest_int("max_depth", 3, 15)
-                learning_rate = trial.suggest_categorical("learning_rate", [0.001, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.15, 0.2, 0.3])
-                n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000])
-                subsample = trial.suggest_categorical("subsample", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-                colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-                colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-                colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.5, 0.7, 0.9, 1.0])
+
+                max_depth = trial.suggest_int("max_depth", 2, 5)
+                learning_rate = trial.suggest_categorical("learning_rate", [0.01, 0.02, 0.05, 0.1])
+                n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 500])
+                subsample = trial.suggest_categorical("subsample", [0.6, 0.8, 1.0])
+                colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.6, 0.8, 1.0])
+                colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.6, 1.0])
+                colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.6, 1.0])
                 min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
-                gamma = trial.suggest_categorical("gamma", [0, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5])
-                reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.0001, 0.001, 0.01, 0.1, 1, 10])
-                reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
-                scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
+                gamma = trial.suggest_categorical("gamma", [0, 0.1, 0.5, 1])
+                reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10])
+                reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10])
+                scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5])
                 booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
-                # sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
 
                 optuna_objective_model = xgboost.XGBClassifier(
                     objective="binary:logistic",
