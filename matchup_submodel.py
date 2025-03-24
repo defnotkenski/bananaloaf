@@ -252,9 +252,6 @@ class PlayerMatchUp:
                 booster=booster,
             )
 
-            # cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
-            # calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=optuna_objective_model, method="sigmoid", cv=cv)
-
             scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
 
             return scores.mean()
@@ -312,8 +309,11 @@ class PlayerMatchUp:
             model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss")
             model.fit(x_train, y_train)
 
-            y_predict = model.predict(x_test)[0]
-            y_predict_prob = model.predict_proba(x_test)[0, 1]
+            calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=model, method="sigmoid", cv=loocv)
+            calibrated_model.fit(x_train, y_train)
+
+            y_predict = calibrated_model.predict(x_test)[0]
+            y_predict_prob = calibrated_model.predict_proba(x_test)[0, 1]
 
             y_true.append(y_test[0])
             y_pred.append(y_predict)
