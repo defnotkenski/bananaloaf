@@ -275,7 +275,7 @@ class PlayerMatchUp:
         # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=500, desc="Optuna Trials")
+        progress_bar = tqdm(total=1500, desc="Optuna Trials")
 
         def update_pbar(_study, _trial):
             progress_bar.update(1)
@@ -287,7 +287,7 @@ class PlayerMatchUp:
         _pruner = optuna.pruners.HyperbandPruner()
 
         study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=500, show_progress_bar=False, callbacks=[update_pbar])
+        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=1500, show_progress_bar=False, callbacks=[update_pbar])
 
         progress_bar.close()
 
