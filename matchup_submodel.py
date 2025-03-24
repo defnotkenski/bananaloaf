@@ -258,7 +258,7 @@ class PlayerMatchUp:
 
         # ----- Evaluate high confidence predictions. -----
 
-        confidence_threshold = 0.70
+        confidence_threshold = 0.60
 
         high_confidence_df = results_converted_df.filter(polars.col("confidence") >= confidence_threshold)
 
