@@ -160,7 +160,9 @@ class PlayerMatchUp:
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
         # Outer loop
-        for train_idx, test_idx in outer_loocv.split(x):
+        for idx, (train_idx, test_idx) in outer_loocv.split(x):
+            print(f"🐝 Iteration: {idx + 1}")
+
             x_train, x_test = x[train_idx], x[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
 
@@ -212,7 +214,7 @@ class PlayerMatchUp:
                 return scores.mean()
 
             optuna.logging.set_verbosity(optuna.logging.WARNING)
-            progress_bar = tqdm(total=50, desc="Optuna Trials")
+            progress_bar = tqdm(total=100, desc="Optuna Trials")
 
             def update_pbar(_study, _trial):
                 progress_bar.update(1)
@@ -221,7 +223,7 @@ class PlayerMatchUp:
             _pruner = optuna.pruners.HyperbandPruner()
 
             study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=50, show_progress_bar=False, callbacks=[update_pbar])
+            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=100, show_progress_bar=False, callbacks=[update_pbar])
 
             progress_bar.close()
 
@@ -229,7 +231,7 @@ class PlayerMatchUp:
             best_accuracy_found = study.best_value
 
             print(f"🐝 Optuna best accuracy (LOOCV estimate): {best_accuracy_found:.4f}")
-            print(f"🐝 Optuna best params: {best_params}")
+            # print(f"🐝 Optuna best params: {best_params}")
 
             model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
             model.fit(x_train, y_train)
