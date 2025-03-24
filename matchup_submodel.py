@@ -160,8 +160,8 @@ class PlayerMatchUp:
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
         # Outer loop
-        for idx, (train_idx, test_idx) in outer_loocv.split(x):
-            print(f"🐝 Iteration: {idx + 1}")
+        for idx, (train_idx, test_idx) in enumerate(outer_loocv.split(x)):
+            print(f"🐝 Current iteration: {idx + 1}")
 
             x_train, x_test = x[train_idx], x[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
