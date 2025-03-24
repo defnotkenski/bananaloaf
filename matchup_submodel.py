@@ -154,6 +154,7 @@ class PlayerMatchUp:
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         # ----- Prepare polars dataframe. -----
+
         train_data_df = polars.DataFrame(train_data_arg)
 
         x = train_data_df.drop(["game_date", "target"]).to_numpy()
@@ -161,7 +162,7 @@ class PlayerMatchUp:
 
         # ----- Split dataset into train and test. -----
 
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.10, stratify=y)
+        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.20, stratify=y)
 
         n_jobs = multiprocessing.cpu_count()
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
@@ -229,6 +230,7 @@ class PlayerMatchUp:
         best_param_model.fit(x_train, y_train)
 
         # ----- Predict and evaluate. -----
+
         y_pred = best_param_model.predict(x_test)
         y_pred_prob = best_param_model.predict_proba(x_test)[:, 1]
 
@@ -236,6 +238,7 @@ class PlayerMatchUp:
         print(f"🐝 Final accuracy on UNSEEN test data: {best_param_accuracy:.4f}")
 
         # ----- Calculate confidence from predictions. -----
+
         results_converted = []
 
         for true_class, pred, prob in zip(y_test, y_pred, y_pred_prob):
@@ -254,6 +257,7 @@ class PlayerMatchUp:
         results_converted_df = polars.DataFrame(results_converted)
 
         # ----- Evaluate high confidence predictions. -----
+
         confidence_threshold = 0.70
 
         high_confidence_df = results_converted_df.filter(polars.col("confidence") >= confidence_threshold)
@@ -352,17 +356,14 @@ if __name__ == "__main__":
 
     curr_dir = Path.cwd()
 
-    player_gamelog_csv = curr_dir.joinpath("player_gamelog_validation_v2.csv")
-    league_gamelog_csv = curr_dir.joinpath("league_gamelog_validation_v2.csv")
+    # player_gamelog_csv = curr_dir.joinpath("player_gamelog_validation_v2.csv")
+    # league_gamelog_csv = curr_dir.joinpath("league_gamelog_validation_v2.csv")
 
-    player_gamelog_csv_ext = polars.read_csv("player_gamelog_validation_v2_extension.csv")
-    league_gamelog_csv_ext = polars.read_csv("league_gamelog_validation_v2_extension.csv")
-
-    player_gamelog_concat = polars.concat([player_gamelog_csv, player_gamelog_csv_ext])
-    league_gamelog_concat = polars.concat([league_gamelog_csv_ext, league_gamelog_csv])
+    player_gamelog_csv = curr_dir.joinpath("player_gamelog_concat_v1.csv")
+    league_gamelog_csv = curr_dir.joinpath("league_gamelog_concat_v1.csv")
 
     player_matchup_context = PlayerMatchUp(
-        player_last_arg=player_last, player_gamelogs_csv_arg=player_gamelog_concat, league_gamelogs_csv_arg=league_gamelog_concat
+        player_last_arg=player_last, player_gamelogs_csv_arg=player_gamelog_csv, league_gamelogs_csv_arg=league_gamelog_csv
     )
 
     player_matchup_context.train_matchup_context_submodel(bet_line_under_or_over="over", points_or_equiv=6)

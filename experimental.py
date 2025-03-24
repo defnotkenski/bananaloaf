@@ -21,15 +21,19 @@ def main() -> None:
     # player_gamelog = playergamelogs.PlayerGameLogs(player_id_nullable=hayes_id, season_nullable=season).get_data_frames()[0]
     # player_gamelog.to_csv("player_gamelog_validation_v2_extension.csv", index=False)
 
+    # -----
+
     player_df = polars.read_csv("player_gamelog_validation_v2.csv")
     player_df_ext = polars.read_csv("player_gamelog_validation_v2_extension.csv")
 
     player_concat = polars.concat([player_df, player_df_ext])
+    # player_concat.write_csv("player_gamelog_concat_v1.csv")
 
     league_df = polars.read_csv("league_gamelog_validation_v2.csv")
     league_df_ext = polars.read_csv("league_gamelog_validation_v2_extension.csv")
 
     league_concat = polars.concat([league_df_ext, league_df])
+    league_concat.write_csv("league_gamelog_concat_v1.csv")
 
     return
 
