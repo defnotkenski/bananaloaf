@@ -142,7 +142,7 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 1000) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 1200) -> None:
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
