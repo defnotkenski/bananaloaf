@@ -252,10 +252,10 @@ class PlayerMatchUp:
                 booster=booster,
             )
 
-            cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
-            calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=optuna_objective_model, method="sigmoid", cv=cv)
+            # cv = sklearn.model_selection.StratifiedKFold(n_splits=5, shuffle=True)
+            # calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=optuna_objective_model, method="sigmoid", cv=cv)
 
-            scores = cross_val_score(estimator=calibrated_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
+            scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
 
             return scores.mean()
 
