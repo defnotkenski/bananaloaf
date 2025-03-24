@@ -182,7 +182,7 @@ class PlayerMatchUp:
 
     @staticmethod
     def _train_xgboost(train_data_arg: list[dict]) -> None:
-        loocv = LeaveOneOut()
+        outer_loocv = LeaveOneOut()
 
         # ----- Prepare polars dataframe. -----
         train_data_df = polars.DataFrame(train_data_arg)
@@ -190,140 +190,104 @@ class PlayerMatchUp:
         x = train_data_df.drop(["game_date", "target"]).to_numpy()
         y = train_data_df.select("target").to_numpy().ravel()
 
-        # ----- Configure grid/random search. -----
-        # param_search = {
-        #     "max_depth": Integer(3, 15),
-        #     "learning_rate": Categorical([0.001, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.15, 0.2, 0.3]),
-        #     "n_estimators": Categorical([50, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000]),
-        #     "subsample": Categorical([0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
-        #     "colsample_bytree": Categorical([0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
-        #     "colsample_bylevel": Categorical([0.5, 0.6, 0.7, 0.8, 0.9, 1.0]),
-        #     "colsample_bynode": Categorical([0.5, 0.7, 0.9, 1.0]),
-        #     "min_child_weight": Integer(1, 10),
-        #     "gamma": Categorical([0, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5]),
-        #     "reg_alpha": Categorical([0, 0.0001, 0.001, 0.01, 0.1, 1, 10]),
-        #     "reg_lambda": Categorical([0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10]),
-        #     "scale_pos_weight": Categorical([0.25, 0.5, 0.75, 1, 2, 3, 5]),
-        #     "booster": Categorical(["gbtree", "dart"]),
-        #     # "tree_method": Categorical(["auto", "hist", "exact"]),
-        #     # "sampling_method": Categorical(["uniform", "gradient_based"]),
-        # }
-
-        def optuna_objective(trial: optuna.Trial) -> float:
-            max_depth = trial.suggest_int("max_depth", 3, 15)
-            learning_rate = trial.suggest_categorical("learning_rate", [0.001, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.15, 0.2, 0.3])
-            n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000])
-            subsample = trial.suggest_categorical("subsample", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-            colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-            colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-            colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.5, 0.7, 0.9, 1.0])
-            min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
-            gamma = trial.suggest_categorical("gamma", [0, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5])
-            reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.0001, 0.001, 0.01, 0.1, 1, 10])
-            reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
-            scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
-            booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
-            # sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
-
-            optuna_objective_model = xgboost.XGBClassifier(
-                objective="binary:logistic",
-                eval_metric="logloss",
-                verbosity=0,
-                # ----- CUDA support. -----
-                # device="cuda",
-                # tree_method="hist",
-                # sampling_method=sampling_method,
-                # ----- Param sweep. -----
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                n_estimators=n_estimators,
-                subsample=subsample,
-                colsample_bytree=colsample_bytree,
-                colsample_bylevel=colsample_bylevel,
-                colsample_bynode=colsample_bynode,
-                min_child_weight=min_child_weight,
-                gamma=gamma,
-                reg_alpha=reg_alpha,
-                reg_lambda=reg_lambda,
-                scale_pos_weight=scale_pos_weight,
-                booster=booster,
-            )
-
-            scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
-
-            return scores.mean()
-
-        # ----- Start sweep and return results. -----
-        # param_search_sweep = BayesSearchCV(
-        #     estimator=xgboost.XGBClassifier(objective="binary:logistic", eval_metric="logloss", verbosity=0),
-        #     search_spaces=param_search,
-        #     n_iter=200,
-        #     scoring="accuracy",
-        #     cv=loocv,
-        #     verbose=0,
-        #     n_jobs=8,
-        #     refit=True,
-        #     error_score="raise",
-        # )
-
-        # param_search_sweep.fit(x, y, callback=[lambda _: (progress_bar.update(1), None)[1]])
-
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=1000, desc="Optuna Trials")
-
-        def update_pbar(_study, _trial):
-            progress_bar.update(1)
+        # We'll store these to track performance across the outer loop
+        outer_y_true = []
+        outer_y_pred = []
+        outer_y_pred_prob = []
 
         n_jobs = multiprocessing.cpu_count()
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
-        optuna_sampler = optuna.samplers.TPESampler()
-        _pruner = optuna.pruners.HyperbandPruner()
+        # Outer loop
+        for train_idx, test_idx in outer_loocv.split(x):
+            x_train, x_test = x[train_idx], x[test_idx]
+            y_train, y_test = y[train_idx], y[test_idx]
 
-        study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
-        study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=1000, show_progress_bar=False, callbacks=[update_pbar])
+            # Inner LOOCV for hyperparam search
+            inner_loocv = LeaveOneOut()
 
-        progress_bar.close()
+            def optuna_objective(trial: optuna.Trial) -> float:
+                max_depth = trial.suggest_int("max_depth", 3, 15)
+                learning_rate = trial.suggest_categorical("learning_rate", [0.001, 0.003, 0.005, 0.01, 0.02, 0.03, 0.05, 0.1, 0.15, 0.2, 0.3])
+                n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 400, 500, 750, 1000, 1500, 2000])
+                subsample = trial.suggest_categorical("subsample", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+                colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+                colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+                colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.5, 0.7, 0.9, 1.0])
+                min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
+                gamma = trial.suggest_categorical("gamma", [0, 0.01, 0.05, 0.1, 0.2, 0.5, 1, 2, 5])
+                reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.0001, 0.001, 0.01, 0.1, 1, 10])
+                reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10])
+                scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [0.25, 0.5, 0.75, 1, 2, 3, 5])
+                booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
+                # sampling_method = trial.suggest_categorical("sampling_method", ["uniform", "gradient_based"])
 
-        # print(f"🐝 Finished iterations:", len(param_search_sweep.optimizer_results_[0].x_iters))
-        # print(f"🐝 LOOCV best params: {param_search_sweep.best_params_}")
-        # print(f"🐝 LOOCV best accuracy: {param_search_sweep.best_score_}")
+                optuna_objective_model = xgboost.XGBClassifier(
+                    objective="binary:logistic",
+                    eval_metric="logloss",
+                    verbosity=0,
+                    # ----- CUDA support. -----
+                    # device="cuda",
+                    # tree_method="hist",
+                    # sampling_method=sampling_method,
+                    # ----- Param sweep. -----
+                    max_depth=max_depth,
+                    learning_rate=learning_rate,
+                    n_estimators=n_estimators,
+                    subsample=subsample,
+                    colsample_bytree=colsample_bytree,
+                    colsample_bylevel=colsample_bylevel,
+                    colsample_bynode=colsample_bynode,
+                    min_child_weight=min_child_weight,
+                    gamma=gamma,
+                    reg_alpha=reg_alpha,
+                    reg_lambda=reg_lambda,
+                    scale_pos_weight=scale_pos_weight,
+                    booster=booster,
+                )
 
-        best_params = study.best_params
-        best_accuracy_found = study.best_value
+                scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=inner_loocv, scoring="accuracy", n_jobs=-1)
 
-        print(f"🐝 Optuna best accuracy (LOOCV estimate): {best_accuracy_found:.4f}")
-        print(f"🐝 Optuna best params: {best_params}")
+                return scores.mean()
 
-        # ----- Get predictions and probabilities. -----
+            optuna.logging.set_verbosity(optuna.logging.WARNING)
+            progress_bar = tqdm(total=1000, desc="Optuna Trials")
 
-        y_true, y_pred, y_pred_prob = [], [], []
+            def update_pbar(_study, _trial):
+                progress_bar.update(1)
 
-        for train_index, test_index in loocv.split(x):
-            x_train, x_test = x[train_index], x[test_index]
-            y_train, y_test = y[train_index], y[test_index]
+            optuna_sampler = optuna.samplers.TPESampler()
+            _pruner = optuna.pruners.HyperbandPruner()
 
-            model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss")
+            study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
+            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=1000, show_progress_bar=False, callbacks=[update_pbar])
+
+            progress_bar.close()
+
+            best_params = study.best_params
+            best_accuracy_found = study.best_value
+
+            print(f"🐝 Optuna best accuracy (LOOCV estimate): {best_accuracy_found:.4f}")
+            print(f"🐝 Optuna best params: {best_params}")
+
+            model = xgboost.XGBClassifier(**best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
             model.fit(x_train, y_train)
 
-            cv = StratifiedKFold(n_splits=5, shuffle=True)
-            calibrated_model = sklearn.calibration.CalibratedClassifierCV(estimator=model, method="sigmoid", cv=cv)
-            calibrated_model.fit(x_train, y_train)
+            y_pred_test = model.predict(x_test)[0]
+            y_pred_prob_test = model.predict_proba(x_test)[0, 1]
 
-            y_predict = calibrated_model.predict(x_test)[0]
-            y_predict_prob = calibrated_model.predict_proba(x_test)[0, 1]
+            outer_y_true.append(y_test[0])
+            outer_y_pred.append(y_pred_test)
+            outer_y_pred_prob.append(y_pred_prob_test)
 
-            y_true.append(y_test[0])
-            y_pred.append(y_predict)
-            y_pred_prob.append(y_predict_prob)
-
-        prediction_accuracy = accuracy_score(y_true, y_pred)
-        print(f"🐝 Manual LOOCV accuracy (with best Optuna params): {prediction_accuracy}")
+        # ----- Evaluate overall performance across the outer folds. -----
+        final_accuracy = accuracy_score(outer_y_true, outer_y_pred)
+        print(f"🐝 Nested LOOCV final accuracy: {final_accuracy:.4f}")
 
         # ----- Calculate confifence from predictions. -----
         results_converted = []
 
-        for true_class, pred, prob in zip(y, y_pred, y_pred_prob):
+        for true_class, pred, prob in zip(outer_y_true, outer_y_pred, outer_y_pred_prob):
             confidence = abs(prob - 0.5) * 2
 
             results_converted.append(
