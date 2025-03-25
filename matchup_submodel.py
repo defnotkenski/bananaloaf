@@ -142,7 +142,7 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 200) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 50) -> None:
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
@@ -180,7 +180,7 @@ class PlayerMatchUp:
 
         # ----- Split dataset into train and test. -----
 
-        n_jobs = multiprocessing.cpu_count()
+        n_jobs = int(multiprocessing.cpu_count() / 2)
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
         def optuna_objective(trial: optuna.Trial) -> numpy.floating:
