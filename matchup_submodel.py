@@ -180,7 +180,8 @@ class PlayerMatchUp:
 
         # ----- Split dataset into train and test. -----
 
-        n_jobs = int(multiprocessing.cpu_count() / 2)
+        # n_jobs = int(multiprocessing.cpu_count() / 2)
+        n_jobs = 1
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
         def optuna_objective(trial: optuna.Trial) -> numpy.floating:
