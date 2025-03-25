@@ -11,7 +11,9 @@ def main() -> None:
     jokic_id = "203999"
     hayes_id = "1629637"
 
-    season = "2023-24"
+    season = "2022-23"
+
+    # -----
 
     # League GameLogs.
     # league_gamelog = leaguegamelog.LeagueGameLog(season=season).get_data_frames()[0]
@@ -19,21 +21,21 @@ def main() -> None:
 
     # Player GameLogs.
     # player_gamelog = playergamelogs.PlayerGameLogs(player_id_nullable=hayes_id, season_nullable=season).get_data_frames()[0]
-    # player_gamelog.to_csv("player_gamelog_validation_v2_extension.csv", index=False)
+    # player_gamelog.to_csv("hayes_player_gamelog_s22-23.csv", index=False)
 
     # -----
 
-    player_df = polars.read_csv("player_gamelog_validation_v2.csv")
-    player_df_ext = polars.read_csv("player_gamelog_validation_v2_extension.csv")
-
-    player_concat = polars.concat([player_df, player_df_ext])
-    # player_concat.write_csv("player_gamelog_concat_v1.csv")
-
-    league_df = polars.read_csv("league_gamelog_validation_v2.csv")
-    league_df_ext = polars.read_csv("league_gamelog_validation_v2_extension.csv")
-
-    league_concat = polars.concat([league_df_ext, league_df])
-    league_concat.write_csv("league_gamelog_concat_v1.csv")
+    # player_df = polars.read_csv("player_gamelog_validation_v2.csv")
+    # player_df_ext = polars.read_csv("player_gamelog_validation_v2_extension.csv")
+    #
+    # player_concat = polars.concat([player_df, player_df_ext])
+    # # player_concat.write_csv("player_gamelog_concat_v1.csv")
+    #
+    # league_df = polars.read_csv("league_gamelog_validation_v2.csv")
+    # league_df_ext = polars.read_csv("league_gamelog_validation_v2_extension.csv")
+    #
+    # league_concat = polars.concat([league_df_ext, league_df])
+    # league_concat.write_csv("league_gamelog_concat_v1.csv")
 
     return
 

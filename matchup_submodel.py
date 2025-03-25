@@ -1,10 +1,10 @@
 import sys
 from typing import Literal
-import sklearn.calibration
+import numpy
 from nba_api.stats.static import players
 from pathlib import Path
 import polars
-from sklearn.model_selection import LeaveOneOut, cross_val_score, StratifiedKFold, train_test_split
+from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import accuracy_score
 import xgboost
 from tqdm import tqdm
@@ -142,73 +142,91 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 5000) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 1000) -> None:
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
         # -----
 
-        loocv = LeaveOneOut()
+        tscv = TimeSeriesSplit(n_splits=5, test_size=10)
         progress_bar = tqdm(total=n_iter, desc="Optuna Trials")
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         # ----- Prepare polars dataframe. -----
+        hold_out = 21
 
-        train_data_df = polars.DataFrame(train_data_arg)
+        data_df = polars.DataFrame(train_data_arg)
+        sort_data_df = data_df.sort("game_date", descending=False)
 
-        x = train_data_df.drop(["game_date", "target"]).to_numpy()
-        y = train_data_df.get_column("target").to_numpy()
+        train_df = sort_data_df.head(sort_data_df.height - hold_out)
+        test_df = sort_data_df.tail(hold_out)
+
+        x = train_df.drop(["game_date", "target"]).to_numpy()
+        y = train_df.get_column("target").to_numpy()
+
+        x_holdout = test_df.drop(["game_date", "target"]).to_numpy()
+        y_holdout = test_df.get_column("target").to_numpy()
+
+        target_balance_check = (
+            sort_data_df.get_column("target").value_counts().with_columns((polars.col("count") / polars.sum("count") * 100).alias("percentage"))
+        )
+
+        percentage_1 = target_balance_check.filter(polars.col("target") == 1).to_dict(as_series=False)
+        percentage_0 = target_balance_check.filter(polars.col("target") == 0).to_dict(as_series=False)
+
+        print(f"🐝 There are {percentage_1['count'][0]} with class {percentage_1['target'][0]} which is {percentage_1['percentage'][0]:.2f}")
+        print(f"🐝 There are {percentage_0['count'][0]} with class {percentage_0['target'][0]} which is {percentage_0['percentage'][0]:.2f}")
 
         # ----- Split dataset into train and test. -----
-
-        x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.20, stratify=y)
 
         n_jobs = multiprocessing.cpu_count()
         print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
-        def optuna_objective(trial: optuna.Trial) -> float:
-            max_depth = trial.suggest_int("max_depth", 2, 5)
-            learning_rate = trial.suggest_categorical("learning_rate", [0.01, 0.02, 0.05, 0.1])
-            n_estimators = trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 500])
-            subsample = trial.suggest_categorical("subsample", [0.6, 0.8, 1.0])
-            colsample_bytree = trial.suggest_categorical("colsample_bytree", [0.6, 0.8, 1.0])
-            colsample_bylevel = trial.suggest_categorical("colsample_bylevel", [0.6, 1.0])
-            colsample_bynode = trial.suggest_categorical("colsample_bynode", [0.6, 1.0])
-            min_child_weight = trial.suggest_int("min_child_weight", 1, 10)
-            gamma = trial.suggest_categorical("gamma", [0, 0.1, 0.5, 1])
-            reg_alpha = trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10])
-            reg_lambda = trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10])
-            scale_pos_weight = trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5])
-            booster = trial.suggest_categorical("booster", ["gbtree", "dart"])
+        def optuna_objective(trial: optuna.Trial) -> numpy.floating:
+            param_sweep = {
+                "max_depth": trial.suggest_int("max_depth", 2, 5),
+                "learning_rate": trial.suggest_categorical("learning_rate", [0.01, 0.02, 0.05, 0.1]),
+                "n_estimators": trial.suggest_categorical("n_estimators", [50, 100, 200, 300, 500]),
+                "subsample": trial.suggest_categorical("subsample", [0.6, 0.8, 1.0]),
+                "colsample_bytree": trial.suggest_categorical("colsample_bytree", [0.6, 0.8, 1.0]),
+                "colsample_bylevel": trial.suggest_categorical("colsample_bylevel", [0.6, 1.0]),
+                "colsample_bynode": trial.suggest_categorical("colsample_bynode", [0.6, 1.0]),
+                "min_child_weight": trial.suggest_int("min_child_weight", 1, 10),
+                "gamma": trial.suggest_categorical("gamma", [0, 0.1, 0.5, 1]),
+                "reg_alpha": trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10]),
+                "reg_lambda": trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10]),
+                "scale_pos_weight": trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5]),
+                "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
+            }
+            scores = []
 
-            optuna_objective_model = xgboost.XGBClassifier(
-                objective="binary:logistic",
-                eval_metric="logloss",
-                verbosity=0,
-                # ----- CUDA support. -----
-                # device="cuda",
-                # tree_method="hist",
-                # sampling_method=sampling_method,
-                # ----- Param sweep. -----
-                max_depth=max_depth,
-                learning_rate=learning_rate,
-                n_estimators=n_estimators,
-                subsample=subsample,
-                colsample_bytree=colsample_bytree,
-                colsample_bylevel=colsample_bylevel,
-                colsample_bynode=colsample_bynode,
-                min_child_weight=min_child_weight,
-                gamma=gamma,
-                reg_alpha=reg_alpha,
-                reg_lambda=reg_lambda,
-                scale_pos_weight=scale_pos_weight,
-                booster=booster,
-            )
+            for train_idx, val_idx in tscv.split(x):
+                x_train, x_val = x[train_idx], x[val_idx]
+                y_train, y_val = y[train_idx], y[val_idx]
 
-            scores = cross_val_score(estimator=optuna_objective_model, X=x, y=y, cv=loocv, scoring="accuracy", n_jobs=-1)
+                optuna_objective_model = xgboost.XGBClassifier(
+                    objective="binary:logistic",
+                    eval_metric="logloss",
+                    verbosity=0,
+                    # ----- CUDA support. -----
+                    # device="cuda",
+                    # tree_method="hist",
+                    # sampling_method=sampling_method,
+                    # ----- Param sweep. -----
+                    **param_sweep,
+                )
 
-            return scores.mean()
+                optuna_objective_model.fit(x_train, y_train)
+
+                # ----- Run predictions and evaluate. -----
+
+                y_predict = optuna_objective_model.predict(x_val)
+                accuracy_score_optuna = accuracy_score(y_val, y_predict)
+
+                scores.append(accuracy_score_optuna)
+
+            return numpy.mean(scores)
 
         optuna_sampler = optuna.samplers.TPESampler()
         _pruner = optuna.pruners.HyperbandPruner()
@@ -222,26 +240,26 @@ class PlayerMatchUp:
         optuna_best_accuracy_found = study.best_value
 
         print(f"🐝 Optuna best params INTERNAL accuracy: {optuna_best_accuracy_found:.4f}")
-        # print(f"🐝 Optuna best params: {optuna_best_params}")
+        print(f"🐝 Optuna best params: {optuna_best_params}")
 
         # ----- Retrain on the best hyperparams found from Optuna. -----
 
         best_param_model = xgboost.XGBClassifier(**optuna_best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
-        best_param_model.fit(x_train, y_train)
+        best_param_model.fit(x, y)
 
         # ----- Predict and evaluate. -----
 
-        y_pred = best_param_model.predict(x_test)
-        y_pred_prob = best_param_model.predict_proba(x_test)[:, 1]
+        y_pred = best_param_model.predict(x_holdout)
+        y_pred_prob = best_param_model.predict_proba(x_holdout)[:, 1]
 
-        best_param_accuracy = accuracy_score(y_true=y_test, y_pred=y_pred)
+        best_param_accuracy = accuracy_score(y_true=y_holdout, y_pred=y_pred)
         print(f"🐝 Final accuracy on UNSEEN test data: {best_param_accuracy:.4f}")
 
         # ----- Calculate confidence from predictions. -----
 
         results_converted = []
 
-        for true_class, pred, prob in zip(y_test, y_pred, y_pred_prob):
+        for true_class, pred, prob in zip(y_holdout, y_pred, y_pred_prob):
             confidence = abs(prob - 0.5) * 2
 
             results_converted.append(
