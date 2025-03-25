@@ -142,19 +142,19 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 200) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 500) -> None:
         def update_pbar(_study, _trial):
             progress_bar.update(1)
 
         # -----
 
-        tscv = TimeSeriesSplit(n_splits=5, test_size=10)
+        tscv = TimeSeriesSplit(n_splits=10, test_size=1)
         progress_bar = tqdm(total=n_iter, desc="Optuna Trials")
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
         # ----- Prepare polars dataframe. -----
-        hold_out = 21
+        hold_out = 12
 
         data_df = polars.DataFrame(train_data_arg)
         sort_data_df = data_df.sort("game_date", descending=False)
@@ -276,7 +276,7 @@ class PlayerMatchUp:
 
         # ----- Evaluate high confidence predictions. -----
 
-        confidence_threshold = 0.50
+        confidence_threshold = 0.70
 
         high_confidence_df = results_converted_df.filter(polars.col("confidence") >= confidence_threshold)
 
