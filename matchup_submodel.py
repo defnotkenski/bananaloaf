@@ -198,7 +198,7 @@ class PlayerMatchUp:
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = 1
+            n_jobs = int(multiprocessing.cpu_count() / 3)
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
@@ -219,7 +219,7 @@ class PlayerMatchUp:
                     "reg_alpha": trial.suggest_categorical("reg_alpha", [0, 0.001, 0.01, 0.1, 1, 10]),
                     "reg_lambda": trial.suggest_categorical("reg_lambda", [0.1, 1.0, 2.0, 5.0, 10]),
                     "scale_pos_weight": trial.suggest_categorical("scale_pos_weight", [1, 2, 3, 5]),
-                    "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
+                    # "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
                 }
 
                 for inner_train_idx, inner_val_idx in inner_tscv.split(x_train_outer):
