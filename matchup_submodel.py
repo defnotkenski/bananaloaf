@@ -251,9 +251,9 @@ class PlayerMatchUp:
             # ===== RUN OPTUNA. =====
 
             optuna_sampler = optuna.samplers.TPESampler()
-            _pruner = optuna.pruners.HyperbandPruner()
+            pruner = optuna.pruners.HyperbandPruner()
 
-            study = optuna.create_study(sampler=optuna_sampler, pruner=None, direction="maximize")
+            study = optuna.create_study(sampler=optuna_sampler, pruner=pruner, direction="maximize")
             study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, show_progress_bar=False, callbacks=[update_pbar])
 
             progress_bar.close()
