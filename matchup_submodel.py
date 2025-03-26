@@ -1,3 +1,4 @@
+import gc
 import sys
 from typing import Literal
 import numpy
@@ -197,7 +198,7 @@ class PlayerMatchUp:
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = -1
+            n_jobs = 8
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
@@ -245,6 +246,13 @@ class PlayerMatchUp:
                     accuracy_score_optuna = accuracy_score(y_val_inner, y_predict_inner)
 
                     optuna_scores.append(accuracy_score_optuna)
+
+                    # ----- FREE UP RESOURCES (IDK IF IT WORKS). -----
+
+                    del optuna_objective_model
+                    gc.collect()
+
+                gc.collect()
 
                 return numpy.mean(optuna_scores)
 
