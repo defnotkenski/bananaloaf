@@ -197,8 +197,7 @@ class PlayerMatchUp:
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            # n_jobs = int(multiprocessing.cpu_count())
-            n_jobs = 1
+            n_jobs = -1
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
