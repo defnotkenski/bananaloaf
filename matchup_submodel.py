@@ -150,7 +150,6 @@ class PlayerMatchUp:
             progress_bar.update(1)
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
-        progress_bar = tqdm(total=n_iter, desc="Optuna Trials")
 
         # ===== PREPARE POLARS DATAFRAME. =====
 
@@ -186,6 +185,8 @@ class PlayerMatchUp:
 
         for train_idx, val_idx in outer_tscv.split(x):
 
+            progress_bar = tqdm(total=n_iter, desc="Optuna Trials")
+
             # ===== SPLIT TRAIN DATA. =====
 
             x_train_outer, y_train_outer = x[train_idx], y[train_idx]
@@ -198,7 +199,7 @@ class PlayerMatchUp:
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = int(multiprocessing.cpu_count() / 3)
+            n_jobs = int(multiprocessing.cpu_count() / 2)
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
@@ -230,17 +231,17 @@ class PlayerMatchUp:
                         objective="binary:logistic",
                         eval_metric="logloss",
                         verbosity=0,
-                        # ----- CUDA support. -----
+                        # ===== CUDA support. =====
                         # device="cuda",
                         # tree_method="hist",
                         # sampling_method=sampling_method,
-                        # ----- Param sweep. -----
+                        # ===== Param sweep. =====
                         **param_sweep,
                     )
 
                     optuna_objective_model.fit(x_train_inner, y_train_inner)
 
-                    # ----- Run predictions and evaluate. -----
+                    # ===== Run predictions and evaluate. =====
 
                     y_predict_inner = optuna_objective_model.predict(x_val_inner)
                     accuracy_score_optuna = accuracy_score(y_val_inner, y_predict_inner)
@@ -265,12 +266,12 @@ class PlayerMatchUp:
             print(f"🐝 Optuna best params accuracy: {optuna_best_accuracy_found:.4f}")
             print(f"🐝 Optuna best params: {optuna_best_params}")
 
-            # ----- RETRAIN ON OUTERLOOP WITH BEST PARAMS FROM OPTUNA. -----
+            # ===== RETRAIN ON OUTERLOOP WITH BEST PARAMS FROM OPTUNA. =====
 
             best_param_model = xgboost.XGBClassifier(**optuna_best_params, objective="binary:logistic", eval_metric="logloss", verbosity=0)
             best_param_model.fit(x_train_outer, y_train_outer)
 
-            # ----- PREDICT AND EVALUATE. -----
+            # ===== PREDICT AND EVALUATE. =====
 
             y_pred = best_param_model.predict(x_val_outer)
             # y_pred_prob = best_param_model.predict_proba(x_val_outer)[:, 1]
