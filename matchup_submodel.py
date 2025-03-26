@@ -142,7 +142,7 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 250) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 50) -> None:
         # -----
 
         def update_pbar(_study, _trial):
@@ -190,14 +190,15 @@ class PlayerMatchUp:
             x_train_outer, y_train_outer = x[train_idx], y[train_idx]
             x_val_outer, y_val_outer = x[val_idx], y[val_idx]
 
-            # ===== SET UP INNER LOOP. =====
+            # ===== SET UP INNER LOOP (TIME SERIES). =====
 
             inner_n_splits = 10
             inner_test_size = 1
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = int(multiprocessing.cpu_count())
+            # n_jobs = int(multiprocessing.cpu_count())
+            n_jobs = 1
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
