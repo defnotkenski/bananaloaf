@@ -255,7 +255,7 @@ class PlayerMatchUp:
             pruner = optuna.pruners.MedianPruner(n_startup_trials=10)
 
             study = optuna.create_study(sampler=optuna_sampler, pruner=pruner, direction="maximize")
-            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, timeout=60, show_progress_bar=False, callbacks=[update_pbar])
+            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, show_progress_bar=False, callbacks=[update_pbar])
 
             progress_bar.close()
 
