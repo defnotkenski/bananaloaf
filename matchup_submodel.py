@@ -198,7 +198,7 @@ class PlayerMatchUp:
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = 8
+            n_jobs = 1
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
@@ -247,22 +247,15 @@ class PlayerMatchUp:
 
                     optuna_scores.append(accuracy_score_optuna)
 
-                    # ----- FREE UP RESOURCES (IDK IF IT WORKS). -----
-
-                    del optuna_objective_model
-                    gc.collect()
-
-                gc.collect()
-
                 return numpy.mean(optuna_scores)
 
             # ===== RUN OPTUNA. =====
 
             optuna_sampler = optuna.samplers.TPESampler()
-            pruner = optuna.pruners.HyperbandPruner()
+            pruner = optuna.pruners.MedianPruner(n_startup_trials=10)
 
             study = optuna.create_study(sampler=optuna_sampler, pruner=pruner, direction="maximize")
-            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, show_progress_bar=False, callbacks=[update_pbar])
+            study.optimize(optuna_objective, n_jobs=n_jobs, n_trials=n_iter, timeout=60, show_progress_bar=False, callbacks=[update_pbar])
 
             progress_bar.close()
 
