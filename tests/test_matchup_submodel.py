@@ -7,7 +7,7 @@ from pathlib import Path
 @pytest.fixture()
 def data_fixture():
     curr_dir = Path.cwd()
-    league_gamelog = curr_dir.parent.joinpath("league_gamelog_validation_v2.csv")
+    league_gamelog = curr_dir.parent.joinpath("league_gamelog.csv")
 
     return {"league_gamelog": league_gamelog}
 

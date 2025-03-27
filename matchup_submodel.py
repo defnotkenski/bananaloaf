@@ -1,9 +1,5 @@
-import gc
-import sys
 from typing import Literal
 import numpy
-from nba_api.stats.static import players
-from pathlib import Path
 import polars
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import accuracy_score
@@ -11,21 +7,17 @@ import xgboost
 from tqdm import tqdm
 import optuna
 import multiprocessing
+from lecommons import LeCommons, DEBUG_PRINT
 
-debug_print = f"🍯 [DEBUG] -- "
+debug_print = DEBUG_PRINT
 
 
 class PlayerMatchUp:
-    def __init__(self, player_last_arg: str, player_gamelogs_csv_arg: Path, league_gamelogs_csv_arg: Path):
+    def __init__(self, player_gamelogs_df_arg: polars.DataFrame, league_gamelogs_df_arg: polars.DataFrame):
         self.filtered_opp_gamelogs: polars.DataFrame | None = None
 
-        player_gamelog_raw: polars.DataFrame = polars.read_csv(player_gamelogs_csv_arg)
-        league_gamelog_raw: polars.DataFrame = polars.read_csv(league_gamelogs_csv_arg)
-
-        self.player_gamelogs_df: polars.DataFrame = self._cleanup_df(player_gamelog_raw, is_iso_8601=True)
-        self.league_gamelogs_df: polars.DataFrame = self._cleanup_df(league_gamelog_raw, is_iso_8601=False)
-
-        self.player_last: str = player_last_arg
+        self.player_gamelogs_df: polars.DataFrame = player_gamelogs_df_arg
+        self.league_gamelogs_df: polars.DataFrame = league_gamelogs_df_arg
 
     @staticmethod
     def _calc_team_possessions(game_stats: dict) -> float:
@@ -34,35 +26,12 @@ class PlayerMatchUp:
 
         return possessions
 
-    @staticmethod
-    def _cleanup_df(polars_df: polars.DataFrame, is_iso_8601: bool) -> polars.DataFrame:
-        if is_iso_8601:
-            convert_dates = polars_df.with_columns(polars.col("GAME_DATE").cast(polars.Datetime))
-            return convert_dates
-
-        convert_dates = polars_df.with_columns(polars.col("GAME_DATE").str.to_datetime("%Y-%m-%d"))
-        return convert_dates
-
     def _get_opp_other_opp_boxscore(self, opp_team_id_arg: int, opp_game_id_arg: int) -> polars.DataFrame:
         opp_other_opp_boxscore = self.league_gamelogs_df.filter(
             (polars.col("GAME_ID") == opp_game_id_arg) & (polars.col("TEAM_ID") != opp_team_id_arg)
         )
 
         return opp_other_opp_boxscore
-
-    def _get_player_info(self) -> str:
-        # This is currently set up to return the player id.
-        get_player_id_by_name = players.find_players_by_last_name(self.player_last)
-
-        if len(get_player_id_by_name) > 1:
-            print(f"{debug_print} There may be multiple players with that last name. Exiting to be safe...")
-            sys.exit()
-
-        print(f"{debug_print} Found {get_player_id_by_name[0]['full_name']}. Player ID is {get_player_id_by_name[0]['id']}")
-
-        player_id: str = str(get_player_id_by_name[0]["id"])
-
-        return player_id
 
     def _calc_opp_def_rating(self, filtered_opp_gamelogs: polars.DataFrame) -> float:
         master_opp_posessions_allowed = []
@@ -143,7 +112,7 @@ class PlayerMatchUp:
         return opp_efg_perc_allowed
 
     @staticmethod
-    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 50) -> None:
+    def _train_xgboost(train_data_arg: list[dict], n_iter: int = 100) -> None:
         # -----
 
         def update_pbar(_study, _trial):
@@ -232,7 +201,7 @@ class PlayerMatchUp:
                         eval_metric="logloss",
                         verbosity=0,
                         # ===== CUDA support. =====
-                        # device="cuda",
+                        device="cuda",
                         # tree_method="hist",
                         # sampling_method=sampling_method,
                         # ===== Param sweep. =====
@@ -340,7 +309,7 @@ class PlayerMatchUp:
         # Grab the historical games for the player to extract features and train submodel.
 
         # Iterate through all hsitorical games the player has played except for the last 5 games.
-        for player_game in self.player_gamelogs_df.head(-5).iter_rows(named=True):
+        for player_game in self.player_gamelogs_df.tail(-5).iter_rows(named=True):
             # This is the current game that we are extracting the features from.
 
             player_game_id = player_game["GAME_ID"]
@@ -400,20 +369,21 @@ class PlayerMatchUp:
 
 
 if __name__ == "__main__":
-    # Parameters.
-    player_last: str = "hayes"
-    season: str = "2024-25"
 
-    curr_dir = Path.cwd()
+    player_csv = ["player_gamelogs_s21.csv", "player_gamelogs_s22.csv", "player_gamelogs_s23.csv", "player_gamelogs_s24.csv"]
+    league_csv = ["league_gamelogs_s21.csv", "league_gamelogs_s22.csv", "league_gamelogs_s23.csv", "league_gamelogs_s24.csv"]
 
-    # player_gamelog_csv = curr_dir.joinpath("player_gamelog_validation_v2.csv")
-    # league_gamelog_csv = curr_dir.joinpath("league_gamelog_validation_v2.csv")
+    player_gamelogs_instance = LeCommons.consolidate_csv(csv_files=player_csv, is_iso8601=True)
+    league_gamelogs_instance = LeCommons.consolidate_csv(csv_files=league_csv, is_iso8601=False)
 
-    player_gamelog_csv = curr_dir.joinpath("player_gamelog_concat_v1.csv")
-    league_gamelog_csv = curr_dir.joinpath("league_gamelog_concat_v1.csv")
+    player_gamelogs_df = player_gamelogs_instance.filter_by_player("austin reaves")
+    league_gamelogs_df = league_gamelogs_instance.dataframe
 
-    player_matchup_context = PlayerMatchUp(
-        player_last_arg=player_last, player_gamelogs_csv_arg=player_gamelog_csv, league_gamelogs_csv_arg=league_gamelog_csv
-    )
+    is_player_gamelog_healthy = player_gamelogs_instance.check_player_continuity(player_df=player_gamelogs_df)
 
-    player_matchup_context.train_matchup_context_submodel(bet_line_under_or_over="over", points_or_equiv=6)
+    if not is_player_gamelog_healthy:
+        raise ValueError(f"{debug_print} There is an issue with player continuity.")
+
+    player_matchup_context = PlayerMatchUp(player_gamelogs_df_arg=player_gamelogs_df, league_gamelogs_df_arg=league_gamelogs_df)
+
+    player_matchup_context.train_matchup_context_submodel(bet_line_under_or_over="over", points_or_equiv=13)
