@@ -1,48 +1,92 @@
-import pandas
-import numpy
+from typing import Literal
+import polars
+from lecommons import LeCommons, DEBUG_PRINT
 
-debug_print = f"🍯🐝---[DEBUG]"
+debug_print = DEBUG_PRINT
 
 
-def player_recent_form_submodel() -> None:
-    career_df = pandas.read_csv("")
+class RecentFormSubModel:
+    def __init__(self, dataframe: polars.DataFrame, over_under: Literal["over", "under"], pts: int):
+        self.dataframe = dataframe
+        self.over_under = over_under
+        self.pts = pts
 
-    # pandas.set_option("display.max_columns", None)
-    # print(career_df.info())
+    @staticmethod
+    def _get_average_pts_and_std(dataframe: polars.DataFrame) -> tuple[float, float]:
+        avg_games_pts = dataframe.get_column("PTS").mean()
+        games_std = dataframe.get_column("PTS").std(ddof=1)
 
-    filtered = career_df.loc[0:4, ["GAME_ID", "PLAYER_NAME", "GAME_DATE", "MATCHUP", "PTS", "MIN", "TOV", "WL"]]
-    print(filtered)
+        return avg_games_pts, games_std
 
-    # Average points and std. dev of last 5.
-    last5_points = career_df.loc[0:4, "PTS"].tolist()
+    @staticmethod
+    def _get_avg_mins(dataframe: polars.DataFrame) -> float:
+        avg_mins = dataframe.get_column("MIN").mean()
 
-    avg_points = numpy.mean(last5_points)
-    print(f"{debug_print} The average points over the last 5 games is: {avg_points}")
+        return avg_mins
 
-    std_points = numpy.std(last5_points, ddof=1)
-    print(f"{debug_print} The standard deviation of points over the last 5 games is: {std_points}")
+    @staticmethod
+    def _get_fg_perc(dataframe: polars.DataFrame) -> float:
+        fga = dataframe.get_column("FGA").sum()
+        fgm = dataframe.get_column("FGM").sum()
 
-    # Average minutes of last 5.
-    last5_mins = career_df.loc[0:4, "MIN"].tolist()
+        fg_perc = fgm / fga
 
-    avg_mins = numpy.mean(last5_mins)
-    print(f"{debug_print} The avg. minutes over the last 5 games is: {avg_mins:.2f}")
+        return fg_perc
 
-    # Field goal % of last 5.
-    last5_fga = sum(career_df.loc[0:4, "FGA"].tolist())
-    last5_fgm = sum(career_df.loc[0:4, "FGM"].tolist())
-    fg_perc = last5_fgm / last5_fga
+    @staticmethod
+    def _get_avg_tov(dataframe: polars.DataFrame) -> float:
+        avg_tov = dataframe.get_column("TOV").mean()
 
-    print(f"{debug_print} The FG % over the last 5 games is: {fg_perc:.2f}")
+        return avg_tov
 
-    # Turnovers per game over last 5 games.
-    last5_turnovers = career_df.loc[0:4, "TOV"].tolist()
-    avg_turnovers = numpy.mean(last5_turnovers)
+    def prep_data(self) -> list:
+        master_features = []
+        n_games = -5
 
-    print(f"{debug_print} The avg. turnovers over the last 5 games is: {avg_turnovers:.2f}")
+        # ===== CALCULATIONS. =====
 
-    return
+        for idx, player_game in enumerate(self.dataframe.tail(n_games).iter_rows(named=True)):
+            game_date = player_game["GAME_DATE"]
+            prior_rows = self.dataframe.filter(polars.col("GAME_DATE") < game_date).tail(5)
+
+            avg_pts, game_std = self._get_average_pts_and_std(dataframe=prior_rows)
+            avg_mins = self._get_avg_mins(dataframe=prior_rows)
+            avg_tov = self._get_avg_tov(dataframe=prior_rows)
+            fg_perc = self._get_fg_perc(dataframe=prior_rows)
+
+            game_pts = player_game["PTS"]
+            prop_line_outcome = False
+
+            if self.over_under == "over":
+                prop_line_outcome = game_pts > self.pts
+
+            if self.over_under == "under":
+                prop_line_outcome = game_pts < self.pts
+
+            # ===== FORMAT DATA FOR TRAINING. =====
+
+            master_features.append(
+                {
+                    "game_date": player_game["GAME_DATE"],
+                    "avg_pts": avg_pts,
+                    "game_std": game_std,
+                    "avg_mins": avg_mins,
+                    "avg_tov": avg_tov,
+                    "fg_perc": fg_perc,
+                    "target": int(prop_line_outcome),
+                }
+            )
+
+        return master_features
 
 
 if __name__ == "__main__":
-    player_recent_form_submodel()
+    player_csv = ["player_gamelogs_s21.csv", "player_gamelogs_s22.csv", "player_gamelogs_s23.csv", "player_gamelogs_s24.csv"]
+    player_instance = LeCommons.consolidate_csv(csv_files=player_csv, is_iso8601=True)
+    player_gamelogs = player_instance.filter_by_player(player_name="austin reaves")
+
+    if not player_instance.check_player_continuity(player_df=player_gamelogs):
+        raise ValueError(f"{debug_print} There is an issue with player continuity.")
+
+    instance = RecentFormSubModel(dataframe=player_gamelogs, over_under="over", pts=13)
+    instance.prep_data()

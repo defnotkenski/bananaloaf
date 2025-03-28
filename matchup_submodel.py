@@ -142,7 +142,7 @@ class PlayerMatchUp:
 
         # ===== SET UP OUTER LOOP (TIME SERIES). =====
 
-        outer_n_splits = 10
+        outer_n_splits = 28
         outer_test_size = 1
 
         outer_tscv = TimeSeriesSplit(n_splits=outer_n_splits, test_size=outer_test_size)
@@ -163,12 +163,12 @@ class PlayerMatchUp:
 
             # ===== SET UP INNER LOOP (TIME SERIES). =====
 
-            inner_n_splits = 10
+            inner_n_splits = 28
             inner_test_size = 1
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = int(multiprocessing.cpu_count() / 2)
+            n_jobs = int(multiprocessing.cpu_count())
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
@@ -253,9 +253,9 @@ class PlayerMatchUp:
 
         # ===== OVERALL PERFORMANCE (AVERAGE ACROSS OUTER FOLDS). =====
 
-        print(f"\n🍯 ===== FINAL PERFORMANCE =====\n")
+        print(f"\n🍯 ===== FINAL PERFORMANCE ===== 🍯\n")
         print(f"Outer fold accuracy scores:", outer_scores)
-        print(f"Mean across outer folds:", numpy.mean(outer_scores))
+        print(f"Mean across outer folds acuracy:", numpy.mean(outer_scores))
         print(f"Standard deviation mean across outer folds:", numpy.std(outer_scores))
 
         # results_converted = []
