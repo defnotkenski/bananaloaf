@@ -42,7 +42,7 @@ class LeTrainerUtils:
 
         # ===== SET UP OUTER LOOP (TIME SERIES). =====
 
-        outer_n_splits = 21
+        outer_n_splits = 10
         outer_test_size = 1
 
         outer_tscv = TimeSeriesSplit(n_splits=outer_n_splits, test_size=outer_test_size)
@@ -63,12 +63,12 @@ class LeTrainerUtils:
 
             # ===== SET UP INNER LOOP (TIME SERIES). =====
 
-            inner_n_splits = 21
+            inner_n_splits = 10
             inner_test_size = 1
 
             inner_tscv = TimeSeriesSplit(n_splits=inner_n_splits, test_size=inner_test_size)
 
-            n_jobs = int(multiprocessing.cpu_count() / 2)
+            n_jobs = int(multiprocessing.cpu_count() * 0.75)
             print(f"🐝 Number of cores to be used for hyperparameter sweep: {n_jobs}")
 
             # ===== DEFINE OPTUNA OBJECTIVE. =====
