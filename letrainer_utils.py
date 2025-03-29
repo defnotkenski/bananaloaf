@@ -102,7 +102,7 @@ class LeTrainerUtils:
                         verbosity=0,
                         # ===== CUDA support. =====
                         device="cuda",
-                        # tree_method="hist",
+                        tree_method="hist",
                         # sampling_method=sampling_method,
                         # ===== Param sweep. =====
                         **param_sweep,
