@@ -2,6 +2,7 @@ import json
 import polars
 from datetime import datetime
 from nba_api.stats.static import players
+from pathlib import Path
 
 DEBUG_PRINT = "🍯 [BANANA LOAF][DEBUG]"
 
@@ -21,10 +22,11 @@ class LeCommons:
             return False
 
     @classmethod
-    def consolidate_csv(cls, csv_files: list[str], is_iso8601: bool):
+    def consolidate_csv(cls, is_iso8601: bool, csv_dir: str):
         master_df = []
+        csv_path = Path(csv_dir)
 
-        for csv in csv_files:
+        for csv in csv_path.iterdir():
             csv_to_dataframe = polars.read_csv(csv)
 
             # ===== CONVERT THE GAME_DATE COLUMN INTO DATETIME FOR EASIER MANIPULATION LATER. =====
@@ -71,11 +73,8 @@ class LeCommons:
 
 
 if __name__ == "__main__":
-    player_csv = ["player_gamelogs_s21.csv", "player_gamelogs_s22.csv", "player_gamelogs_s23.csv", "player_gamelogs_s24.csv"]
-    league_csv = ["league_gamelogs_s21.csv", "league_gamelogs_s22.csv", "league_gamelogs_s23.csv", "league_gamelogs_s24.csv"]
-
-    players_df = LeCommons.consolidate_csv(csv_files=player_csv, is_iso8601=True)
-    league_df = LeCommons.consolidate_csv(csv_files=league_csv, is_iso8601=False)
+    players_df = LeCommons.consolidate_csv(csv_dir="player_gamelogs", is_iso8601=True)
+    league_df = LeCommons.consolidate_csv(csv_dir="league_gamelogs", is_iso8601=False)
 
     player_gamelog = players_df.filter_by_player(player_name="austin reaves")
     is_player_gamelog_healthy = players_df.check_player_continuity(player_df=player_gamelog)

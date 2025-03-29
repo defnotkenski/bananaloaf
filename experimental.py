@@ -22,12 +22,12 @@ def main() -> None:
     # -----
 
     # League GameLogs.
-    # league_gamelog = leaguegamelog.LeagueGameLog(season="2024-25").get_data_frames()[0]
-    # league_gamelog.to_csv("league_gamelogs_s24.csv", index=False)
+    league_gamelog = leaguegamelog.LeagueGameLog(season="2020-21").get_data_frames()[0]
+    league_gamelog.to_csv("league_gamelogs_s20.csv", index=False)
 
     # Player GameLogs.
-    dev_nba_api = playergamelogs.PlayerGameLogs(season_nullable="2024-25").get_data_frames()[0]
-    dev_nba_api.to_csv("player_gamelogs_s24.csv", index=False)
+    # dev_nba_api = playergamelogs.PlayerGameLogs(season_nullable="2024-25").get_data_frames()[0]
+    # dev_nba_api.to_csv("player_gamelogs_s24.csv", index=False)
 
     # -----
 

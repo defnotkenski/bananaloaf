@@ -1,6 +1,7 @@
 from typing import Literal
 import polars
 from lecommons import LeCommons, DEBUG_PRINT
+from letrainer_utils import LeTrainerUtils
 
 debug_print = DEBUG_PRINT
 
@@ -38,6 +39,18 @@ class RecentFormSubModel:
         avg_tov = dataframe.get_column("TOV").mean()
 
         return avg_tov
+
+    @staticmethod
+    def train_model(master_features_arg: list[dict]) -> None:
+        letrainer = LeTrainerUtils()
+        scores, scores_mean, scores_std = letrainer.train_xgboost(feature_extractions_arg=master_features_arg, n_iter=50)
+
+        print(f"\n🍯 ===== FINAL PERFORMANCE ===== 🍯\n")
+        print(f"Outer fold accuracy scores:", scores)
+        print(f"Mean across outer folds acuracy:", scores_mean)
+        print(f"Standard deviation mean across outer folds:", scores_std)
+
+        return
 
     def prep_data(self) -> list:
         master_features = []
@@ -81,8 +94,7 @@ class RecentFormSubModel:
 
 
 if __name__ == "__main__":
-    player_csv = ["player_gamelogs_s21.csv", "player_gamelogs_s22.csv", "player_gamelogs_s23.csv", "player_gamelogs_s24.csv"]
-    player_instance = LeCommons.consolidate_csv(csv_files=player_csv, is_iso8601=True)
+    player_instance = LeCommons.consolidate_csv(csv_dir="player_gamelogs", is_iso8601=True)
     player_gamelogs = player_instance.filter_by_player(player_name="austin reaves")
 
     if not player_instance.check_player_continuity(player_df=player_gamelogs):
