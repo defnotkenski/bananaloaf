@@ -100,5 +100,7 @@ if __name__ == "__main__":
     if not player_instance.check_player_continuity(player_df=player_gamelogs):
         raise ValueError(f"{debug_print} There is an issue with player continuity.")
 
-    instance = RecentFormSubModel(dataframe=player_gamelogs, over_under="over", pts=13)
-    instance.prep_data()
+    model_instance = RecentFormSubModel(dataframe=player_gamelogs, over_under="over", pts=13)
+
+    master_features = model_instance.prep_data()
+    model_instance.train_model(master_features_arg=master_features)
